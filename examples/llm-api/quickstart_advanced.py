@@ -97,6 +97,12 @@ def add_llm_args(parser):
                         default=False,
                         action='store_true',
                         help='Use piecewise CUDA graph to optimize the model')
+    parser.add_argument('--use_moe_prefetch',
+                        default=False,
+                        action='store_true',
+                        help='Enable MoE weight prefetching to reduce GPU memory usage')
+    parser.add_argument('--moe_prefetch_depth', type=int, default=None)
+    parser.add_argument('--moe_prefetch_stride', type=int, default=None)
 
     # Sampling
     parser.add_argument("--max_tokens", type=int, default=64)
@@ -218,6 +224,9 @@ def setup_llm(args, **kwargs):
         moe_expert_parallel_size=args.moe_ep_size,
         moe_tensor_parallel_size=args.moe_tp_size,
         moe_cluster_parallel_size=args.moe_cluster_size,
+        use_moe_prefetch=args.use_moe_prefetch,
+        moe_prefetch_depth=args.moe_prefetch_depth,
+        moe_prefetch_stride=args.moe_prefetch_stride,
         enable_chunked_prefill=args.enable_chunked_prefill,
         speculative_config=spec_config,
         trust_remote_code=args.trust_remote_code,

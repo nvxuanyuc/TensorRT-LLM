@@ -55,7 +55,8 @@ from ..modules.decoder_layer import DecoderLayer
 from ..modules.embedding import Embedding
 from ..modules.fused_moe import (CutlassFusedMoE, DeepSeekV3MoeRoutingMethod,
                                  TRTLLMGenFusedMoE, WideEPMoE, create_moe,
-                                 moe_load_balancer_set_repeated_for_next_layer)
+                                 moe_load_balancer_set_repeated_for_next_layer,
+                                 MoEPrefetchProxy)
 from ..modules.gated_mlp import GatedMLP
 from ..modules.linear import Linear, TensorParallelMode, WeightsLoadingConfig
 from ..modules.multi_stream_utils import maybe_execute_in_parallel
@@ -411,7 +412,8 @@ class Deepseekv3MoE(nn.Module):
                  dtype: Optional[torch.dtype] = None,
                  model_config: ModelConfig = ModelConfig(),
                  override_quant_config: Optional[QuantConfig] = None,
-                 layer_idx: Optional[int] = None):
+                 layer_idx: Optional[int] = None,
+                 moe_prefetch_proxy: Optional[MoEPrefetchProxy] = None):
         from ..distributed import AllReduce
 
         super().__init__()
@@ -440,7 +442,8 @@ class Deepseekv3MoE(nn.Module):
             model_config=model_config,
             override_quant_config=override_quant_config,
             aux_stream=aux_stream_dict[AuxStreamType.MoeChunkingOverlap],
-            layer_idx=layer_idx)
+            layer_idx=layer_idx,
+            moe_prefetch_proxy=moe_prefetch_proxy)
 
         self.mapping = model_config.mapping
 
@@ -588,7 +591,8 @@ class DeepseekV3DecoderLayer(DecoderLayer):
 
     def __init__(self, model_config: ModelConfig[PretrainedConfig],
                  layer_idx: int, aux_stream_dict: Dict[AuxStreamType,
-                                                       torch.cuda.Stream]):
+                                                       torch.cuda.Stream],
+                 moe_prefetch_proxy: Optional[MoEPrefetchProxy] = None):
         super().__init__()
         self.model_config = model_config
         config = model_config.pretrained_config
@@ -640,7 +644,8 @@ class DeepseekV3DecoderLayer(DecoderLayer):
                 model_config=model_config,
                 override_quant_config=quant_config,
                 aux_stream_dict=aux_stream_dict,
-                layer_idx=layer_idx)
+                layer_idx=layer_idx,
+                moe_prefetch_proxy=moe_prefetch_proxy)
         else:
             block_size = 1
             if quant_config and quant_config.group_size is not None:
@@ -1003,6 +1008,9 @@ class DeepseekV3Model(DecoderModel):
 
     def __init__(self, model_config: ModelConfig[PretrainedConfig]):
         super().__init__(model_config)
+        super().__moe_prefetch_init__(model_config=model_config,
+                                      moe_layer_freq=model_config.pretrained_config.moe_layer_freq,
+                                      first_k_dense_replace=model_config.pretrained_config.first_k_dense_replace)
         config = model_config.pretrained_config
         self.vocab_size = config.vocab_size
         self.num_hidden_layers = config.num_hidden_layers
@@ -1021,7 +1029,8 @@ class DeepseekV3Model(DecoderModel):
 
         self.layers = nn.ModuleList([
             DeepseekV3DecoderLayer(model_config, layer_idx,
-                                   self.aux_stream_dict)
+                                   self.aux_stream_dict,
+                                   self.moe_prefetch_proxy_list[layer_idx])
             for layer_idx in range(config.num_hidden_layers)
         ])
         self.norm = RMSNorm(hidden_size=config.hidden_size,
@@ -1045,6 +1054,10 @@ class DeepseekV3Model(DecoderModel):
 
         hidden_states = inputs_embeds
         residual = None
+        
+        if self.use_moe_prefetch:
+            cur_stream = torch.cuda.current_stream()
+            self.moe_prefetch_manager.prefetch_weights(cur_stream)
 
         for decoder_layer in self.layers[:self.num_hidden_layers]:
             hidden_states, residual = decoder_layer(

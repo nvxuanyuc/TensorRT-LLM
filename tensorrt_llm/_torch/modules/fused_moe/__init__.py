@@ -14,6 +14,7 @@ from .routing import (BaseMoeRoutingMethod, DeepSeekV3MoeRoutingMethod,
                       LoadBalancedMoeRoutingMethod, RenormalizeMoeRoutingMethod,
                       RenormalizeNaiveMoeRoutingMethod, RoutingMethodType,
                       SparseMixerMoeRoutingMethod, StaticMoeRoutingMethod)
+from .moe_prefetch_manager import MoEPrefetchManager, MoEPrefetchProxy
 
 __all__ = [
     "BaseMoeRoutingMethod",
@@ -38,4 +39,6 @@ __all__ = [
     "TRTLLMGenFusedMoE",
     "VanillaMoE",
     "WideEPMoE",
+    "MoEPrefetchManager",
+    "MoEPrefetchProxy",
 ]

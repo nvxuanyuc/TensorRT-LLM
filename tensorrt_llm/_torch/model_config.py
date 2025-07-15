@@ -55,7 +55,11 @@ class MoeLoadBalancerConfig:
             return self.initial_global_assignments[layer_idx]
         else:
             return None
-
+        
+@dataclass
+class MoEPrefetchConfig:
+    prefetch_depth: int = 2
+    prefetch_stride: int = 1
 
 @dataclass(kw_only=True)
 class ModelConfig(Generic[TConfig]):
@@ -72,6 +76,7 @@ class ModelConfig(Generic[TConfig]):
 
     spec_config: Optional["DecodingBaseConfig"] = None
     lora_config: Optional["LoraConfig"] = None
+    moe_prefetch_config: Optional[MoEPrefetchConfig] = None
 
     is_generation: bool = True
     max_num_tokens: int = 8192
