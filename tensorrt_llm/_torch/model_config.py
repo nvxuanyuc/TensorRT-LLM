@@ -55,11 +55,13 @@ class MoeLoadBalancerConfig:
             return self.initial_global_assignments[layer_idx]
         else:
             return None
-        
+
+
 @dataclass
 class MoEPrefetchConfig:
     prefetch_depth: int = 2
     prefetch_stride: int = 1
+
 
 @dataclass(kw_only=True)
 class ModelConfig(Generic[TConfig]):

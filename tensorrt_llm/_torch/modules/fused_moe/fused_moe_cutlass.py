@@ -6,12 +6,12 @@ from ...distributed import allgather, reducescatter
 from ...model_config import ModelConfig
 from ...utils import EventType, Fp4QuantizedTensor, ceil_div, swizzle_sf
 from .interface import MoE
+from .moe_prefetch_manager import MoEPrefetchProxy
 from .quantization import (DeepSeekFP8BlockScalesFusedMoEMethod,
                            FP8QDQFusedMoEMethod, MoEWeightLoadingMode,
                            NVFP4CutlassFusedMoEMethod,
                            UnquantizedFusedMoEMethod, WInt4AFP8FusedMoEMethod)
 from .routing import BaseMoeRoutingMethod
-from .moe_prefetch_manager import MoEPrefetchProxy
 
 
 class CutlassFusedMoE(MoE):
@@ -281,7 +281,7 @@ class CutlassFusedMoE(MoE):
             # Fp4 gemm has extra scaling factor
             if x_sf is not None:
                 x_sf = swizzle_sf(x_sf, x_row, x_col, self.scaling_vector_size)
-                
+
         if self.use_prefetch:
             w3_w1_weight = self.prefetch_proxy.w3_w1_dst_buffer
             w2_weight = self.prefetch_proxy.w2_dst_buffer
@@ -356,25 +356,27 @@ class CutlassFusedMoE(MoE):
             all_rank_num_tokens_padded = all_rank_num_tokens
 
         if num_chunks == 1:
-            
+
             if self.use_prefetch:
-                torch.cuda.current_stream().wait_stream(self.prefetch_proxy.prefetch_stream)
-            
+                torch.cuda.current_stream().wait_stream(
+                    self.prefetch_proxy.prefetch_stream)
+
             outputs = self.forward_chunk(
                 x,
                 router_logits,
                 output_dtype,
                 all_rank_num_tokens=all_rank_num_tokens_padded,
                 use_dp_padding=use_dp_padding)
-            
+
             outputs = self.reducescatter_or_allreduce(
                 outputs,
                 all_rank_num_tokens=all_rank_num_tokens_padded,
                 use_dp_padding=use_dp_padding)
-            
+
             if self.use_prefetch:
-                self.prefetch_proxy.start_next_layer_prefetching(torch.cuda.current_stream())
-                
+                self.prefetch_proxy.start_next_layer_prefetching(
+                    torch.cuda.current_stream())
+
         else:
             if self.use_dp:
                 all_rank_chunk_size_list = [
@@ -391,9 +393,10 @@ class CutlassFusedMoE(MoE):
 
             x_list = x.split(chunk_size_list)
             router_logits_list = router_logits.split(chunk_size_list)
-            
+
             if self.use_prefetch:
-                torch.cuda.current_stream().wait_stream(self.prefetch_proxy.prefetch_stream)
+                torch.cuda.current_stream().wait_stream(
+                    self.prefetch_proxy.prefetch_stream)
 
             self.event_dict[EventType.Main].record()
             with torch.cuda.stream(self.aux_stream):
@@ -444,10 +447,11 @@ class CutlassFusedMoE(MoE):
             self.event_dict[EventType.MoeChunkingOverlap].wait()
 
             outputs = torch.cat(outputs_list)
-            
+
             if self.use_prefetch:
-                self.prefetch_proxy.start_next_layer_prefetching(torch.cuda.current_stream())
-                
+                self.prefetch_proxy.start_next_layer_prefetching(
+                    torch.cuda.current_stream())
+
         if self.use_dp:
             rank = self.mapping.tp_rank
             outputs = outputs[:all_rank_num_tokens[rank]]

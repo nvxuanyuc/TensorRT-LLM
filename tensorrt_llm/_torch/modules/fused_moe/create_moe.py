@@ -13,8 +13,8 @@ from .fused_moe_vanilla import VanillaMoE
 from .fused_moe_wide_ep import WideEPMoE
 from .interface import MoE, MoEWeightLoadingMode
 from .moe_load_balancer import get_moe_load_balancer
-from .routing import BaseMoeRoutingMethod
 from .moe_prefetch_manager import MoEPrefetchProxy
+from .routing import BaseMoeRoutingMethod
 
 
 def get_moe_cls(

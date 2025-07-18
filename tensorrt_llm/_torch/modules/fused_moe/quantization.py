@@ -73,14 +73,16 @@ class FusedMoEMethodBase(ABC):
                        w3_w1_weight_shape: tuple[int, int, int],
                        w2_weight_shape: tuple[int, int, int]):
         if module.use_prefetch:
-            w3_w1_weight = nn.Parameter(torch.empty(w3_w1_weight_shape,
-                                                    dtype=weight_dtype,
-                                                    device=torch.device("cpu")).pin_memory(),
+            w3_w1_weight = nn.Parameter(torch.empty(
+                w3_w1_weight_shape,
+                dtype=weight_dtype,
+                device=torch.device("cpu")).pin_memory(),
                                         requires_grad=False)
-            w2_weight = nn.Parameter(torch.empty(w2_weight_shape,
-                                                dtype=weight_dtype,
-                                                device=torch.device("cpu")).pin_memory(),
-                                    requires_grad=False)
+            w2_weight = nn.Parameter(
+                torch.empty(w2_weight_shape,
+                            dtype=weight_dtype,
+                            device=torch.device("cpu")).pin_memory(),
+                requires_grad=False)
             module.prefetch_proxy.register_weight(w3_w1_weight, w2_weight)
         else:
             # Fused gate_up_proj (column parallel)
@@ -89,9 +91,9 @@ class FusedMoEMethodBase(ABC):
                                         requires_grad=False)
             # down_proj (row parallel)
             w2_weight = nn.Parameter(torch.empty(w2_weight_shape,
-                                                dtype=weight_dtype),
-                                    requires_grad=False)
-            
+                                                 dtype=weight_dtype),
+                                     requires_grad=False)
+
         module.register_parameter("w3_w1_weight", w3_w1_weight)
         module.register_parameter("w2_weight", w2_weight)
 
