@@ -61,6 +61,12 @@ class MoeLoadBalancerConfig:
             return None
 
 
+@dataclass
+class MoEPrefetchConfig:
+    prefetch_depth: int = 2
+    prefetch_stride: int = 1
+
+
 @contextlib.contextmanager
 def config_file_lock(timeout: int = 10):
     """
@@ -105,6 +111,7 @@ class ModelConfig(Generic[TConfig]):
 
     spec_config: Optional["DecodingBaseConfig"] = None
     lora_config: Optional["LoraConfig"] = None
+    moe_prefetch_config: Optional[MoEPrefetchConfig] = None
 
     is_generation: bool = True
     max_num_tokens: int = 8192
