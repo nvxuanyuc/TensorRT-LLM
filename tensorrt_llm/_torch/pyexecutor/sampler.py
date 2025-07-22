@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from typing import Literal, Optional
 
 import torch
-import flashinfer
 
 from tensorrt_llm._torch.pyexecutor.handle_logits import HandleLogits
 from tensorrt_llm._torch.pyexecutor.make_decoding_batch_input_output import \
@@ -151,42 +150,6 @@ def top_p_sampling_batch(logits: torch.Tensor, top_p: float = 0.9):
     next_tokens = torch.multinomial(softmax, num_samples=1).squeeze(-1)
     return next_tokens, softmax
 
-def flashinfer_sample(
-    logits: torch.Tensor,
-    k: Optional[torch.Tensor],
-    p: Optional[torch.Tensor],
-    generator: Optional[torch.Generator] = None,
-) -> torch.Tensor:
-    """Sample from the logits using FlashInfer.
-
-    Statistically, this function is equivalent to the `random_sample` function.
-    However, this function is faster because it avoids sorting the logits tensor
-    via rejection sampling.
-
-    NOTE: The outputs of this function do not necessarily match the outputs of
-    the `random_sample` function. It only guarantees that the outputs are
-    statistically equivalent.
-
-    NOTE: This function includes CPU-GPU synchronization, while `random_sample`
-    does not. Call this function at the end of the forward pass to minimize
-    the synchronization overhead.
-    """
-    assert not (k is None and p is None)
-    if k is None:
-        # Top-p only.
-        probs = logits.softmax(dim=-1, dtype=torch.float32)
-        next_token_ids = flashinfer.sampling.top_p_sampling_from_probs(
-            probs, p, deterministic=True, generator=generator)
-    elif p is None:
-        # Top-k only.
-        probs = logits.softmax(dim=-1, dtype=torch.float32)
-        next_token_ids = flashinfer.sampling.top_k_sampling_from_probs(
-            probs, k, deterministic=True, generator=generator)
-    else:
-        # Both top-k and top-p.
-        next_token_ids = flashinfer.sampling.top_k_top_p_sampling_from_logits(
-            logits, k, p, deterministic=True, generator=generator)
-    return next_token_ids.view(-1).long()
 
 def forward_native(
     logits: torch.Tensor,
@@ -202,9 +165,8 @@ def forward_native(
     probs = logits.softmax(dim=-1, dtype=torch.float32)
     return random_sample(probs)
 
-def random_sample(
-    probs: torch.Tensor,
-) -> torch.Tensor:
+
+def random_sample(probs: torch.Tensor, ) -> torch.Tensor:
     """Randomly sample from the probabilities.
 
     We use this function instead of torch.multinomial because torch.multinomial
@@ -213,6 +175,7 @@ def random_sample(
     q = torch.empty_like(probs)
     q.exponential_()
     return probs.div_(q).argmax(dim=-1).view(-1)
+
 
 def apply_min_p(
     logits: torch.Tensor,
@@ -224,9 +187,7 @@ def apply_min_p(
     # Convert logits to probability distribution
     probability_values = torch.nn.functional.softmax(logits, dim=-1)
     # Calculate maximum probabilities per sequence
-    max_probabilities = torch.amax(probability_values,
-                                    dim=-1,
-                                    keepdim=True)
+    max_probabilities = torch.amax(probability_values, dim=-1, keepdim=True)
     # Reshape min_p for broadcasting
     adjusted_min_p = min_p.unsqueeze(1) * max_probabilities
     # Identify valid tokens using threshold comparison
@@ -234,6 +195,7 @@ def apply_min_p(
     # Apply mask using boolean indexing
     logits[~valid_token_mask] = -float('inf')
     return logits
+
 
 def apply_top_k_top_p(
     logits: torch.Tensor,
@@ -268,8 +230,10 @@ def apply_top_k_top_p(
     logits = logits_sort.scatter(dim=-1, index=logits_idx, src=logits_sort)
     return logits
 
+
 def greedy_sample(logits: torch.Tensor) -> torch.Tensor:
     return logits.argmax(dim=-1).view(-1)
+
 
 def apply_temperature(
     logits: torch.Tensor,
@@ -278,33 +242,26 @@ def apply_temperature(
     # Use in-place division to avoid creating a new tensor.
     return logits.div_(temp.unsqueeze(dim=1))
 
-def sampling_batch(
-        logits: torch.Tensor,
-        temperatures: torch.Tensor,
-        top_k: torch.Tensor,
-        top_p: torch.Tensor,
-        min_p: torch.Tensor
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+
+def sampling_batch(logits: torch.Tensor, temperatures: torch.Tensor,
+                   top_k: torch.Tensor, top_p: torch.Tensor,
+                   min_p: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     raw_probs = torch.softmax(logits, dim=-1)
     greedy_sampled = greedy_sample(logits)
     logits = apply_temperature(logits, temperatures)
     logits = apply_min_p(logits, min_p)
-    # if not torch.cuda.is_current_stream_capturing():
-    #     generator = torch.Generator(device="cuda")
-    #     generator.manual_seed(0)
-    # next_tokens = flashinfer_sample(adjusted_logits, top_k, top_p, generator)
-    # logits = apply_top_k_top_p(logits, top_k, top_p)
     random_sampled = forward_native(logits, top_k, top_p)
     next_tokens = torch.where(
-            temperatures < 1e-5,
-            greedy_sampled,
-            random_sampled,
-            out=greedy_sampled,  # Reuse tensor
-        )
+        temperatures <= 1e-2,  # Match the clamping threshold
+        greedy_sampled,
+        random_sampled,
+        out=greedy_sampled,  # Reuse tensor
+    )
     token_probs = torch.gather(raw_probs, dim=1,
                                index=next_tokens.unsqueeze(1)).squeeze(-1)
     log_probs = torch.log(token_probs)
     return next_tokens, log_probs
+
 
 def greedy_search_sampling_batch(logits):
     next_tokens = torch.argmax(logits, dim=-1)
