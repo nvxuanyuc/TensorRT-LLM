@@ -473,11 +473,12 @@ class DraftTargetDecodingConfig(DecodingBaseConfig):
 
 
 class MTPDecodingConfig(DecodingBaseConfig):
-    num_nextn_predict_layers: int = 1
-    use_relaxed_acceptance_for_thinking: bool = False
-    relaxed_topk: int = 1
-    relaxed_delta: float = 0.
-    use_mtp_vanilla: bool = False
+    num_nextn_predict_layers: Optional[int] = 1
+    use_relaxed_acceptance_for_thinking: Optional[bool] = False
+    relaxed_topk: Optional[int] = 1
+    relaxed_delta: Optional[float] = 0.
+    use_mtp_vanilla: Optional[bool] = False
+    use_advanced_mtp_sampler: Optional[bool] = False
 
     # TODO: remove this after distinguishing `max_draft_len` and `num_nextn_predict_layers`
     # Now we need a flag when MTPDecodingConfig is updated by PyTorchModelEngine.

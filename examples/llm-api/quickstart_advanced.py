@@ -112,6 +112,9 @@ def add_llm_args(parser):
     parser.add_argument('--draft_model_dir', type=str, default=None)
     parser.add_argument('--max_matching_ngram_size', type=int, default=5)
     parser.add_argument('--use_one_model', default=False, action='store_true')
+    parser.add_argument('--use_advanced_mtp_sampler',
+                        default=False,
+                        action='store_true')
 
     # Relaxed acceptance
     parser.add_argument('--use_relaxed_acceptance_for_thinking',
@@ -163,7 +166,8 @@ def setup_llm(args, **kwargs):
             use_relaxed_acceptance_for_thinking=args.
             use_relaxed_acceptance_for_thinking,
             relaxed_topk=args.relaxed_topk,
-            relaxed_delta=args.relaxed_delta)
+            relaxed_delta=args.relaxed_delta,
+            use_advanced_mtp_sampler=args.use_advanced_mtp_sampler)
     elif spec_decode_algo == "EAGLE3":
         spec_config = EagleDecodingConfig(
             max_draft_len=args.spec_decode_max_draft_len,

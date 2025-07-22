@@ -9,8 +9,8 @@ from ..distributed.ops import allgather
 from ..model_config import ModelConfig
 from ..pyexecutor.llm_request import LlmRequest, LlmRequestState
 from ..pyexecutor.resource_manager import BaseResourceManager, SlotManager
-from ..pyexecutor.sampler import (SampleState, SampleStateTensors, TorchSampler, sampling_batch,
-                                  add_token, int_tensor)
+from ..pyexecutor.sampler import (SampleState, SampleStateTensors, TorchSampler,
+                                  add_token, int_tensor, sampling_batch)
 from ..pyexecutor.scheduler import ScheduledRequests
 from .interface import SpecMetadata
 
@@ -839,8 +839,15 @@ class MTPWorker(nn.Module):
                     logits, spec_metadata.draft_tokens, target_tokens_cache,
                     mtp_num_modules, batch_size, num_contexts, logits.shape[-1])
             else:
-                # Do greedy sampling for the input logits
-                target_tokens, target_log_probs = sampling_batch(logits, spec_metadata.temperatures, spec_metadata.top_k, spec_metadata.top_p, spec_metadata.min_p)
+                if self.spec_config.use_advanced_mtp_sampler:
+                    # Do advanced sampling for the input logits
+                    # target_log_probs currently unused but kept for future log probs support in MTP
+                    target_tokens, target_log_probs = sampling_batch(
+                        logits, spec_metadata.temperatures, spec_metadata.top_k,
+                        spec_metadata.top_p, spec_metadata.min_p)
+                else:
+                    # Do greedy sampling for the input logits
+                    target_tokens = torch.argmax(logits, dim=-1)
 
                 # context
                 accepted_tokens[:num_contexts, 0] = target_tokens[:num_contexts]
