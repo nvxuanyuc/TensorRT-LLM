@@ -383,22 +383,21 @@ class PyTorchModelEngine(ModelEngine):
             self.max_draft_len = spec_config.max_draft_len
 
             if self.is_advanced_mtp_sampler:
+                mtp_total_sampling_size = self.batch_size * (
+                    self.max_draft_len + 1)
                 self.temperatures_cuda = torch.empty(
-                    (self.batch_size * (self.max_draft_len + 1), ),
+                    (mtp_total_sampling_size, ),
                     dtype=torch.float,
                     device='cuda')
-                self.top_k_cuda = torch.empty(
-                    (self.batch_size * (self.max_draft_len + 1), ),
-                    dtype=torch.int,
-                    device='cuda')
-                self.top_p_cuda = torch.empty(
-                    (self.batch_size * (self.max_draft_len + 1), ),
-                    dtype=torch.float,
-                    device='cuda')
-                self.min_p_cuda = torch.empty(
-                    (self.batch_size * (self.max_draft_len + 1), ),
-                    dtype=torch.float,
-                    device='cuda')
+                self.top_k_cuda = torch.empty((mtp_total_sampling_size, ),
+                                              dtype=torch.int,
+                                              device='cuda')
+                self.top_p_cuda = torch.empty((mtp_total_sampling_size, ),
+                                              dtype=torch.float,
+                                              device='cuda')
+                self.min_p_cuda = torch.empty((mtp_total_sampling_size, ),
+                                              dtype=torch.float,
+                                              device='cuda')
         else:
             self.without_logits = False
             self.max_draft_len = 0
@@ -1199,7 +1198,7 @@ class PyTorchModelEngine(ModelEngine):
 
         def get_request_temperature(request: LlmRequest) -> float:
             if not request.sampling_config.temperature:
-                return 0.7
+                return 1.0
             temperature = request.sampling_config.temperature[0]
             if 0 < temperature < 1e-2:
                 # temperature less than 0.01 may cause numerical errors
@@ -1211,7 +1210,7 @@ class PyTorchModelEngine(ModelEngine):
                 top_k = 0
             else:
                 top_k = request.sampling_config.top_k[0]
-            # flashinfer expects k > d for no top_k filter
+
             if top_k <= 0:
                 top_k = 2147483647
             return top_k
