@@ -17,10 +17,10 @@ import torch._dynamo.config
 import tensorrt_llm.bindings.internal.userbuffers as ub
 from tensorrt_llm._torch.models.checkpoints.base_checkpoint_loader import \
     BaseCheckpointLoader
+from tensorrt_llm._torch.pyexecutor.llm_request import LlmRequest
 from tensorrt_llm._torch.pyexecutor.sampler import SampleStateTensors
 from tensorrt_llm._torch.speculative import (
     get_num_extra_kv_tokens, update_spec_config_from_model_config)
-from tensorrt_llm._torch.pyexecutor.llm_request import LlmRequest
 from tensorrt_llm._torch.speculative.mtp import SampleStateTensorsMTP
 from tensorrt_llm._utils import (is_trace_enabled, nvtx_range, release_gc,
                                  torch_dtype_to_str, trace_func)
