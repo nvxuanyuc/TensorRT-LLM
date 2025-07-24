@@ -94,13 +94,8 @@ class TransformersTokenizer(TokenizerBase):
             self,
             ids: Union[int, List[int]],
             skip_special_tokens: bool = False) -> Union[str, List[str]]:
-        # DeepSeek vocabulary has token ids not mapped to any tokens, these will get converted to None
-        # by the tokenizer. We need to filter them out.
-        tokens = self.tokenizer.convert_ids_to_tokens(
+        return self.tokenizer.convert_ids_to_tokens(
             ids, skip_special_tokens=skip_special_tokens)
-        if isinstance(ids, int):
-            return tokens  # Single token, return as-is (could be None)
-        return [token for token in tokens if token is not None]
 
     def convert_tokens_to_string(
             self,
