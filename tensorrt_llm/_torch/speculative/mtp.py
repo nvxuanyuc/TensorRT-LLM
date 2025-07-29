@@ -376,6 +376,11 @@ class MTPWorker(nn.Module):
         self.model_config = model_config
         self.is_thop = False
 
+        # Default to greedy mode. If true, use advanced pytorch sampling strategy.
+        self.enable_mixed_sampler = False
+        if self.model_config is not None:
+            self.enable_mixed_sampler = self.model_config.enable_mixed_sampler
+
     def forward(
         self,
         input_ids,
@@ -891,7 +896,7 @@ class MTPWorker(nn.Module):
                     logits, spec_metadata.draft_tokens, target_tokens_cache,
                     mtp_num_modules, batch_size, num_contexts, logits.shape[-1])
             else:
-                if self.spec_config.use_advanced_mtp_sampler:
+                if self.enable_mixed_sampler:
                     # Do advanced sampling for the input logits
                     # target_log_probs currently unused but kept for future log probs support in MTP
                     target_tokens, target_log_probs = sampling_batch(

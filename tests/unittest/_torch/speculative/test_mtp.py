@@ -342,8 +342,7 @@ class TestMTPSampleAndAcceptDraftTokens(unittest.TestCase):
         batch_size = len(draft_len)
         # enable advanced pytorch sampler
         spec_config = MTPDecodingConfig(
-            num_nextn_predict_layers=mtp_num_modules,
-            use_advanced_mtp_sampler=True)
+            num_nextn_predict_layers=mtp_num_modules)
 
         # attention metedata
         attn_metadata = TrtllmAttentionMetadata(max_num_requests=batch_size,
@@ -389,6 +388,7 @@ class TestMTPSampleAndAcceptDraftTokens(unittest.TestCase):
         # mtp worker
         # is_thop default to False for advanced pytorch sampler testing only
         mtpworker = MTPWorker(spec_config)
+        mtpworker.enable_mixed_sampler = True
 
         # Test advanced torch sampler
         accepted_tokens, num_accepted_tokens = mtpworker.sample_and_accept_draft_tokens(

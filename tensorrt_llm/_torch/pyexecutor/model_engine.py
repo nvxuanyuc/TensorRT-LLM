@@ -280,7 +280,7 @@ class PyTorchModelEngine(ModelEngine):
         self.is_spec_decode = spec_config is not None
         self.is_draft_model = is_draft_model
         self.is_advanced_mtp_sampler = self.is_spec_decode and self.spec_config.spec_dec_mode.is_mtp(
-        ) and self.spec_config.use_advanced_mtp_sampler
+        ) and self.pytorch_backend_config.enable_mixed_sampler
 
         self.in_warmup = False
 
@@ -298,6 +298,7 @@ class PyTorchModelEngine(ModelEngine):
             max_num_tokens=max_num_tokens,
             moe_max_num_tokens=pytorch_backend_config.moe_max_num_tokens,
             moe_load_balancer=pytorch_backend_config.moe_load_balancer,
+            enable_mixed_sampler=pytorch_backend_config.enable_mixed_sampler,
             lora_config=lora_config)
         # In case that some tests use stub models and override `_load_model`.
         if not hasattr(self.model, 'extra_attrs'):
@@ -1195,7 +1196,7 @@ class PyTorchModelEngine(ModelEngine):
                     top_k = request.sampling_config.top_k[0]
 
                 # set k to a very large value (larger than vocab size) to disable top_k sampling
-                TOP_K_DISABLED = (1 << 31) - 1
+                TOP_K_DISABLED = torch.iinfo(torch.int32).max
                 if top_k <= 0:
                     top_k = TOP_K_DISABLED
                 return top_k
