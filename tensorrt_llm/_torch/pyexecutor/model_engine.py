@@ -416,6 +416,17 @@ class PyTorchModelEngine(ModelEngine):
                                              device='cuda')
         self.iter_counter = 0
 
+        self.balanced_indices_cuda = torch.empty(
+            self.max_num_tokens,
+            self.model.model_config.pretrained_config.num_experts_per_tok,
+            dtype=torch.int32,
+            device='cuda')
+        self.balanced_values_cuda = torch.ones(
+            self.max_num_tokens,
+            self.model.model_config.pretrained_config.num_experts_per_tok,
+            dtype=torch.float32,
+            device='cuda')
+
         # We look up this key in resource_manager during forward to find the
         # kv cache manager. Can be changed to support multiple model engines
         # with different KV cache managers.
@@ -1365,6 +1376,22 @@ class PyTorchModelEngine(ModelEngine):
         assert total_num_tokens <= self.max_num_tokens, (
             "total_num_tokens should be less than or equal to max_num_tokens")
         # if exist requests that do not have previous batch, copy input_ids and draft_tokens
+
+        # balanced indices and values for load balancing moe
+        # Fill the balanced_indices with each expert in round-robin fashion
+        # print(f"Total num tokens in iter {self.iter_counter}: {total_num_tokens}")
+        num_expert_per_tok = self.model.model_config.pretrained_config.num_experts_per_tok
+        num_experts = self.model.model_config.pretrained_config.n_routed_experts
+        final_size = total_num_tokens * num_expert_per_tok
+        repeat_count = math.ceil(final_size / num_experts)
+        indices = torch.arange(num_experts, dtype=torch.int32)
+        indices = indices.repeat(repeat_count)
+        indices = indices[:final_size]
+        balanced_indices = indices.view(total_num_tokens,
+                                        num_expert_per_tok).contiguous()
+        self.balanced_indices_cuda[:total_num_tokens].copy_(balanced_indices,
+                                                            non_blocking=True)
+
         if num_tokens > 0:
             input_ids = torch.tensor(input_ids,
                                      dtype=torch.int,
@@ -1515,6 +1542,8 @@ class PyTorchModelEngine(ModelEngine):
             self.position_ids_cuda[:total_num_tokens].unsqueeze(0),
             'inputs_embeds': None,
             "multimodal_params": multimodal_params_list,
+            "balanced_indices": self.balanced_indices_cuda[:total_num_tokens],
+            "balanced_values": self.balanced_values_cuda[:total_num_tokens],
         }
 
         # Directly input mrope_position_deltas as a Tensor for cuda graph, because dictionary could not be captured.

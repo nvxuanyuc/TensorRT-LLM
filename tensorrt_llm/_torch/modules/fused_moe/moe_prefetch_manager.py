@@ -99,17 +99,22 @@ class MoEPrefetchManager:
             })
 
     def prefetch_weights(self, cur_stream: torch.cuda.Stream):
+        prev_stream = cur_stream
         for i, layer_idx in enumerate(self.initial_prefetch_layers):
             assert layer_idx in self.weights, f"Layer {layer_idx} not found in registered prefteched weights"
 
-            self.prefetch_streams[i].wait_stream(cur_stream)
-            with torch.cuda.stream(self.prefetch_streams[i]):
+            cur_stream = self.prefetch_streams[i]
+            cur_stream.wait_stream(prev_stream)
+
+            with torch.cuda.stream(cur_stream):
                 self.device_weight_buffers[i]["w3_w1_weight"].copy_(
                     self.weights[layer_idx][0].view(self.weight_dtype),
                     non_blocking=True)
                 self.device_weight_buffers[i]["w2_weight"].copy_(
                     self.weights[layer_idx][1].view(self.weight_dtype),
                     non_blocking=True)
+
+            prev_stream = cur_stream
 
     def get_prefetched_stream(self, layer_idx: int):
         assert layer_idx in self.layer_to_buffer, f"Layer {layer_idx} not found in registered prefteched layers"

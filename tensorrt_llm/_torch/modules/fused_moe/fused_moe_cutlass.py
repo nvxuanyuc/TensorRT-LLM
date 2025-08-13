@@ -199,6 +199,8 @@ class CutlassFusedMoE(MoE):
         output_dtype: Optional[torch.dtype] = None,
         all_rank_num_tokens: Optional[List[int]] = None,
         use_dp_padding: Optional[bool] = None,
+        balanced_indices: Optional[torch.IntTensor] = None,
+        balanced_values: Optional[torch.FloatTensor] = None,
     ) -> torch.Tensor:
         if isinstance(x, Fp4QuantizedTensor):
             assert output_dtype is not None
@@ -209,6 +211,11 @@ class CutlassFusedMoE(MoE):
         # apply routing
         token_selected_experts, token_final_scales = self.routing_method.apply(
             router_logits)
+
+        if balanced_indices is not None:
+            token_selected_experts = balanced_indices
+            token_final_scales = balanced_values
+
         assert token_selected_experts.shape[
             1] == self.routing_method.experts_per_token
         assert token_selected_experts.shape == token_final_scales.shape
@@ -333,6 +340,8 @@ class CutlassFusedMoE(MoE):
         all_rank_num_tokens: Optional[List[int]] = None,
         all_rank_max_num_tokens: Optional[int] = None,
         use_dp_padding: Optional[bool] = None,
+        balanced_indices: Optional[torch.IntTensor] = None,
+        balanced_values: Optional[torch.FloatTensor] = None,
     ) -> torch.Tensor:
         assert do_finalize, "CutlassFusedMoE does not support do_finalize=False"
         if self.use_dp:
@@ -363,7 +372,9 @@ class CutlassFusedMoE(MoE):
                 router_logits,
                 output_dtype,
                 all_rank_num_tokens=all_rank_num_tokens_padded,
-                use_dp_padding=use_dp_padding)
+                use_dp_padding=use_dp_padding,
+                balanced_indices=balanced_indices,
+                balanced_values=balanced_values)
 
             if self.use_prefetch:
                 self.prefetch_proxy.start_next_layer_prefetching(
@@ -405,7 +416,9 @@ class CutlassFusedMoE(MoE):
                     router_logits_,
                     all_rank_num_tokens=all_rank_num_tokens_list[idx]
                     if self.use_dp else None,
-                    use_dp_padding=use_dp_padding)
+                    use_dp_padding=use_dp_padding,
+                    balanced_indices=balanced_indices,
+                    balanced_values=balanced_values)
 
             def _reducescatter_or_allreduce(x_, idx):
                 return self.reducescatter_or_allreduce(

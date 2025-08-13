@@ -520,7 +520,7 @@ class Deepseekv3MoE(nn.Module):
 
     def compute_routed_output(self, hidden_states, hidden_states_fp4,
                               all_rank_num_tokens, all_rank_max_num_tokens,
-                              do_finalize):
+                              do_finalize, balanced_indices, balanced_values):
         # max-throughput
         use_dp_padding = False
         if self.use_dp and self.mapping.tp_size > 1:
@@ -540,6 +540,8 @@ class Deepseekv3MoE(nn.Module):
             all_rank_num_tokens=all_rank_num_tokens,
             all_rank_max_num_tokens=all_rank_max_num_tokens,
             use_dp_padding=use_dp_padding,
+            balanced_indices=balanced_indices,
+            balanced_values=balanced_values,
         )
 
         return routed_output
@@ -552,6 +554,9 @@ class Deepseekv3MoE(nn.Module):
         all_rank_max_num_tokens: Optional[int] = None,
         final_all_reduce_params: Optional[AllReduceParams] = None,
         do_finalize: Optional[bool] = True,
+        balanced_indices: Optional[torch.IntTensor] = None,
+        balanced_values: Optional[torch.FloatTensor] = None,
+        **kwargs,
     ) -> torch.Tensor:
         if not do_finalize:
             assert not self.use_dp
@@ -564,11 +569,10 @@ class Deepseekv3MoE(nn.Module):
             return shared_output
 
         def _compute_routed_output():
-            routed_output = self.compute_routed_output(hidden_states,
-                                                       hidden_states_fp4,
-                                                       all_rank_num_tokens,
-                                                       all_rank_max_num_tokens,
-                                                       do_finalize)
+            routed_output = self.compute_routed_output(
+                hidden_states, hidden_states_fp4, all_rank_num_tokens,
+                all_rank_max_num_tokens, do_finalize, balanced_indices,
+                balanced_values)
             return routed_output
 
         routed_output, shared_output = maybe_execute_in_parallel(
@@ -744,6 +748,8 @@ class DeepseekV3DecoderLayer(DecoderLayer):
         hidden_states: torch.Tensor,
         attn_metadata: AttentionMetadata,
         residual: torch.Tensor,
+        balanced_indices: Optional[torch.IntTensor] = None,
+        balanced_values: Optional[torch.FloatTensor] = None,
         **kwargs,
     ) -> torch.Tensor:
         if residual is None:
@@ -764,6 +770,8 @@ class DeepseekV3DecoderLayer(DecoderLayer):
                 hidden_states=hidden_states,
                 attn_metadata=attn_metadata,
                 residual=residual,
+                balanced_indices=balanced_indices,
+                balanced_values=balanced_values,
             )
         else:
             assert isinstance(self.mlp, GatedMLP)
@@ -777,6 +785,8 @@ class DeepseekV3DecoderLayer(DecoderLayer):
         hidden_states: torch.Tensor,
         attn_metadata: AttentionMetadata,
         residual: torch.Tensor,
+        balanced_indices: Optional[torch.IntTensor] = None,
+        balanced_values: Optional[torch.FloatTensor] = None,
     ) -> torch.Tensor:
 
         def _run_MoE(hidden_states, hidden_states_fp4, do_finalize):
@@ -789,6 +799,8 @@ class DeepseekV3DecoderLayer(DecoderLayer):
                     enable_allreduce=not (self.fusion_config.POST_MOE_FUSION
                                           or self.mapping.tp_size == 1)),
                 do_finalize=do_finalize,
+                balanced_indices=balanced_indices,
+                balanced_values=balanced_values,
             )
 
         if self.fusion_config.PRE_MOE_FUSION:
@@ -1085,6 +1097,8 @@ class DeepseekV3Model(DecoderModel):
         input_ids: Optional[torch.IntTensor] = None,
         position_ids: Optional[torch.IntTensor] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
+        balanced_indices: Optional[torch.IntTensor] = None,
+        balanced_values: Optional[torch.FloatTensor] = None,
     ) -> torch.Tensor:
         if (input_ids is None) ^ (inputs_embeds is not None):
             raise ValueError(
@@ -1107,6 +1121,8 @@ class DeepseekV3Model(DecoderModel):
                 hidden_states=hidden_states,
                 attn_metadata=attn_metadata,
                 residual=residual,
+                balanced_indices=balanced_indices,
+                balanced_values=balanced_values,
             )
 
         return hidden_states
@@ -1174,6 +1190,8 @@ class DeepseekV3ForCausalLM(DecoderModelForCausalLM[DeepseekV3Model,
         inputs_embeds: Optional[torch.FloatTensor] = None,
         spec_metadata: Optional[MTPSpecMetadata] = None,
         return_context_logits: bool = False,
+        balanced_indices: Optional[torch.IntTensor] = None,
+        balanced_values: Optional[torch.FloatTensor] = None,
         **kwargs,
     ) -> torch.Tensor:
         attn_metadata.num_generations_per_batch = self.model_nextn + 1
@@ -1182,6 +1200,8 @@ class DeepseekV3ForCausalLM(DecoderModelForCausalLM[DeepseekV3Model,
             attn_metadata=attn_metadata,
             position_ids=position_ids,
             inputs_embeds=inputs_embeds,
+            balanced_indices=balanced_indices,
+            balanced_values=balanced_values,
         )
 
         if spec_metadata and spec_metadata.spec_dec_mode.is_mtp():

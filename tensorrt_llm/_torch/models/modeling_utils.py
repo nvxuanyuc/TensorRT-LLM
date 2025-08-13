@@ -71,6 +71,7 @@ class MetaInitMode(TorchDispatchMode):
     random_init_ops = {
         aten.normal_.default,
         aten.uniform_.default,
+        aten.is_pinned.default,
         # TODO: this is not a exhaustive list for random init ops, add as needed
     }
 
@@ -86,7 +87,8 @@ class MetaInitMode(TorchDispatchMode):
         if func in self.init_ops:
             if kwargs is None:
                 kwargs = {}
-            kwargs['device'] = torch.device('meta')
+            if kwargs.get('device') is None:
+                kwargs['device'] = torch.device('meta')
             return func(*args, **kwargs)
         elif func not in self.random_init_ops and self._has_meta_tensor(
                 args, kwargs):
