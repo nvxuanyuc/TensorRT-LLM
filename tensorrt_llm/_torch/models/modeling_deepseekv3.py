@@ -1110,11 +1110,8 @@ class DeepseekV3Model(DecoderModel):
 
     def __init__(self, model_config: ModelConfig[PretrainedConfig]):
         super().__init__(model_config)
-        super().__moe_prefetch_init__(
-            model_config=model_config,
-            moe_layer_freq=model_config.pretrained_config.moe_layer_freq,
-            first_k_dense_replace=model_config.pretrained_config.
-            first_k_dense_replace)
+        super().__moe_prefetch_init__(model_config=model_config,
+                                      model_name="DeepseekV3")
         config = model_config.pretrained_config
         self.vocab_size = config.vocab_size
         self.num_hidden_layers = config.num_hidden_layers
@@ -1164,7 +1161,7 @@ class DeepseekV3Model(DecoderModel):
 
         if self.use_moe_prefetch:
             cur_stream = torch.cuda.current_stream()
-            self.moe_prefetch_manager.prefetch_weights(cur_stream)
+            self.moe_prefetch_manager.prefetch_initial_weights(cur_stream)
 
         for decoder_layer in self.layers[:self.num_hidden_layers]:
             hidden_states, residual = decoder_layer(
